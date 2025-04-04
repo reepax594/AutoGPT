@@ -29,8 +29,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.util import json
-from backend.util.settings import BehaveAs, Settings
-from backend.util.text import TextFormatter
+from backend.util.settings import AppEnvironment, Settings
+
+settings = Settings()
 
 logger = logging.getLogger(__name__)
 fmt = TextFormatter()
@@ -112,120 +113,61 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GEMMA2_9B = "gemma2-9b-it"
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
-    LLAMA3_70B = "llama3-70b-8192"
-    LLAMA3_8B = "llama3-8b-8192"
-    MIXTRAL_8X7B = "mixtral-8x7b-32768"
-    # Groq preview models
-    DEEPSEEK_LLAMA_70B = "deepseek-r1-distill-llama-70b"
-    # Ollama models
-    OLLAMA_LLAMA3_3 = "llama3.3"
-    OLLAMA_LLAMA3_2 = "llama3.2"
-    OLLAMA_LLAMA3_8B = "llama3"
-    OLLAMA_LLAMA3_405B = "llama3.1:405b"
-    OLLAMA_DOLPHIN = "dolphin-mistral:latest"
-    # OpenRouter models
-    GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
-    GROK_BETA = "x-ai/grok-beta"
-    MISTRAL_NEMO = "mistralai/mistral-nemo"
-    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
-    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
-    EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
-    PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
-        "perplexity/llama-3.1-sonar-large-128k-online"
-    )
-    QWEN_QWQ_32B_PREVIEW = "qwen/qwq-32b-preview"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
-    AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
-    AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
-    AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
-    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
-    GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+
+    @classmethod
+    def _missing_(cls, value):
+        if settings.config.app_env == AppEnvironment.LOCAL:
+            if value == "llama3":
+                return cls.OLLAMA_LLAMA3_8B
+            elif value == "llama3.1:405b":
+                return cls.OLLAMA_LLAMA3_405B
+        return None
 
     @property
-    def metadata(self) -> ModelMetadata:
+    def metadata(self) -> "ModelMetadata":
         return MODEL_METADATA[self]
 
-    @property
-    def provider(self) -> str:
-        return self.metadata.provider
+    @classmethod
+    def all_models(cls) -> List["LlmModel"]:
+        models = list(cls)
+        if settings.config.app_env == AppEnvironment.LOCAL:
+            models.extend([cls.OLLAMA_LLAMA3_8B, cls.OLLAMA_LLAMA3_405B])
+        return models
 
-    @property
-    def context_window(self) -> int:
-        return self.metadata.context_window
-
-    @property
-    def max_output_tokens(self) -> int | None:
-        return self.metadata.max_output_tokens
+    # Ollama models
+    OLLAMA_LLAMA3_8B = "llama3"
+    OLLAMA_LLAMA3_405B = "llama3.1:405b"
 
 
 MODEL_METADATA = {
-    # https://platform.openai.com/docs/models
-    LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000),  # o3-mini-2025-01-31
-    LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
-    LlmModel.O1_PREVIEW: ModelMetadata(
-        "openai", 128000, 32768
-    ),  # o1-preview-2024-09-12
-    LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
-    LlmModel.GPT4O_MINI: ModelMetadata(
-        "openai", 128000, 16384
-    ),  # gpt-4o-mini-2024-07-18
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, 16384),  # gpt-4o-2024-08-06
-    LlmModel.GPT4_TURBO: ModelMetadata(
-        "openai", 128000, 4096
-    ),  # gpt-4-turbo-2024-04-09
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
-    # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
-    ),  # claude-3-5-sonnet-20241022
-    LlmModel.CLAUDE_3_5_HAIKU: ModelMetadata(
-        "anthropic", 200000, 8192
-    ),  # claude-3-5-haiku-20241022
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
-        "anthropic", 200000, 4096
-    ),  # claude-3-haiku-20240307
-    # https://console.groq.com/docs/models
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
-    LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 128000, 8192),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, None),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, None),
-    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, None),
-    LlmModel.DEEPSEEK_LLAMA_70B: ModelMetadata("groq", 128000, None),
-    # https://ollama.com/library
-    LlmModel.OLLAMA_LLAMA3_3: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
-    # https://openrouter.ai/models
-    LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
-    LlmModel.GROK_BETA: ModelMetadata("open_router", 131072, 131072),
-    LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
-    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
-        "open_router", 127072, 127072
-    ),
-    LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
-        "open_router", 131000, 4096
-    ),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata(
-        "open_router", 12288, 12288
-    ),
-    LlmModel.AMAZON_NOVA_LITE_V1: ModelMetadata("open_router", 300000, 5120),
-    LlmModel.AMAZON_NOVA_MICRO_V1: ModelMetadata("open_router", 128000, 5120),
-    LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata("open_router", 300000, 5120),
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata("open_router", 65536, 4096),
-    LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata("open_router", 4096, 4096),
+    LlmModel.O1_PREVIEW: ModelMetadata("openai", 32000, cost_factor=60),
+    LlmModel.O1_MINI: ModelMetadata("openai", 62000, cost_factor=30),
+    LlmModel.GPT4O_MINI: ModelMetadata("openai", 128000, cost_factor=10),
+    LlmModel.GPT4O: ModelMetadata("openai", 128000, cost_factor=12),
+    LlmModel.GPT4_TURBO: ModelMetadata("openai", 128000, cost_factor=11),
+    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, cost_factor=8),
+    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata("anthropic", 200000, cost_factor=14),
+    LlmModel.CLAUDE_3_HAIKU: ModelMetadata("anthropic", 200000, cost_factor=13),
+    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, cost_factor=9),
+    LlmModel.MIXTRAL_8X7B: ModelMetadata("groq", 32768, cost_factor=7),
+    LlmModel.GEMMA_7B: ModelMetadata("groq", 8192, cost_factor=6),
+    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, cost_factor=7),
+    LlmModel.LLAMA3_1_405B: ModelMetadata("groq", 8192, cost_factor=10),
+    # Limited to 16k during preview
+    LlmModel.LLAMA3_1_70B: ModelMetadata("groq", 131072, cost_factor=15),
+    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 131072, cost_factor=13),
 }
 
-for model in LlmModel:
+if settings.config.app_env == AppEnvironment.LOCAL:
+    MODEL_METADATA.update(
+        {
+            LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, cost_factor=7),
+            LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, cost_factor=11),
+        }
+    )
+
+for model in LlmModel.all_models():
     if model not in MODEL_METADATA:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
